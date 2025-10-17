@@ -33,14 +33,17 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   let maze = [], solution = [];
-  let animHandle = null, countdownHandle = null;
+  let animHandle = null, countdownHandle = null, hintAnimHandle = null;
   let playerPos = [0, 0], manualMode = true;
-  let timeLimit = 60; // will set dynamically
+  let timeLimit = 60;
+  let hintUsed = false;
 
   const formatTime = s => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
   const setStatus = txt => statusEl.textContent = txt;
 
   function stopCountdown() { if (countdownHandle) { clearInterval(countdownHandle); countdownHandle=null; } }
+  function stopAnim() { if (animHandle) { clearInterval(animHandle); animHandle = null; } }
+  function stopHintAnim() { if (hintAnimHandle) { clearInterval(hintAnimHandle); hintAnimHandle = null; } }
 
   function startCountdown() {
     stopCountdown();
@@ -58,6 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function showGameOver() {
     stopCountdown();
+    stopAnim();
+    stopHintAnim();
     setStatus('Game Over 💥');
     gameOverModal.classList.remove('hidden');
     gameOverModal.classList.add('flex');
@@ -67,6 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
     gameOverModal.classList.remove('flex');
   }
   function showWinModal() {
+    stopCountdown();
+    stopHintAnim();
     winModal.classList.remove('hidden');
     winModal.classList.add('flex');
   }
@@ -125,6 +132,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function fetchMaze(){
+    hintUsed = false;
+    stopHintAnim();
+
     const size = Number(sizeSelect.value)||10;
     const difficulty = diffSelect.value||'medium';
     setStatus('Generating...');
@@ -135,6 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     solution = data.solution||[];
     playerPos=[0,0];
     manualMode=true;
+    stopAnim();
     renderMaze();
     hideGameOver();
     hideWinModal();
@@ -161,7 +172,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function animateSolution(path){
     if(!path || path.length===0) return;
     manualMode=false;
-    if(animHandle) clearInterval(animHandle);
+    stopHintAnim();
+    stopAnim();
     let i=0;
     setStatus('Animating path...');
     document.querySelectorAll('#mazeContainer [data-r]').forEach(el=>el.innerHTML='');
@@ -191,6 +203,61 @@ document.addEventListener('DOMContentLoaded', () => {
     },220);
   }
 
+  function animateHint(path){
+    if(!path || path.length===0) {
+      setStatus('No path available for hint.');
+      return;
+    }
+    if(hintUsed) {
+      setStatus('Hint already used for this game.');
+      return;
+    }
+
+    hintUsed = true;
+    stopAnim();
+    stopHintAnim();
+    manualMode = false;
+    setStatus('Showing hint...');
+    let speed = 120;
+    const diff = diffSelect.value;
+    if(diff==='easy') speed=200;
+    else if(diff==='medium') speed=120;
+    else if(diff==='hard') speed=80;
+
+    let i = 0;
+    document.querySelectorAll('#mazeContainer [data-r]').forEach(el => { el.innerHTML = ''; });
+
+    hintAnimHandle = setInterval(()=>{
+      if(i >= path.length){
+        clearInterval(hintAnimHandle);
+        hintAnimHandle = null;
+        renderMaze();
+        setStatus('Hint animation done!');
+        manualMode = true;
+        return;
+      }
+
+      const [r, c] = path[i];
+      const cell = document.querySelector(`#mazeContainer [data-r='${r}'][data-c='${c}']`);
+      if(cell){
+        cell.classList.remove('bg-cyan-400','bg-red-600','bg-yellow-400','bg-green-500');
+        cell.classList.add('bg-yellow-300','scale-105');
+      }
+
+      if(i > 0){
+        const [pr, pc] = path[i-1];
+        const prev = document.querySelector(`#mazeContainer [data-r='${pr}'][data-c='${pc}']`);
+        if(prev){
+          prev.classList.remove('bg-yellow-300','scale-105');
+          if(maze[pr][pc] === 1) prev.classList.add('bg-cyan-400');
+          else prev.classList.add('bg-red-600','text-white');
+        }
+      }
+
+      i++;
+    }, speed);
+  }
+
   generateBtn.addEventListener('click', async()=>{ stopCountdown(); hideGameOver(); hideWinModal(); await fetchMaze(); });
   startBtn.addEventListener('click', ()=>{ stopCountdown(); startCountdown(); setStatus('Find the path before time runs out! ⏱️'); });
   solveBtn.addEventListener('click', async()=>{
@@ -203,54 +270,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-const hintBtn = document.getElementById('hintBtn');
-let hintUsed = false; 
+  resetBtn.addEventListener('click', ()=>{ 
+    solution=[];
+    hintUsed = false;
+    stopHintAnim();
+    renderMaze(); 
+    stopCountdown(); 
+    timerEl.textContent=formatTime(timeLimit); 
+    setStatus('Ready'); 
+    hideGameOver(); 
+    hideWinModal(); 
+  });
 
-function animateHint(path){
-  if(!path || path.length===0 || hintUsed) return;
-  hintUsed = true;
+  diffSelect.addEventListener('change', async () => {
+    hintUsed = false;
+    stopHintAnim();
+    await fetchMaze();
+  });
 
-  let speed = 100;
-  const diff = diffSelect.value;
-  if(diff==='easy') speed=200;
-  else if(diff==='medium') speed=120;
-  else if(diff==='hard') speed=80;
-
-  let i=0;
-  const originalPos = [...playerPos];
-
-  const hintAnim = setInterval(()=>{
-    if(i>=path.length){
-      clearInterval(hintAnim);
-      renderMaze();
-      setStatus('Hint animation done!');
-      return;
-    }
-    const [r,c] = path[i];
-    const cell = document.querySelector(`#mazeContainer [data-r='${r}'][data-c='${c}']`);
-    if(cell){
-      cell.classList.remove('bg-cyan-500','bg-red-700');
-      cell.classList.add('bg-yellow-900');
-    }
-    if(i>0){
-      const [pr,pc] = path[i-1];
-      const prev = document.querySelector(`#mazeContainer [data-r='${pr}'][data-c='${pc}']`);
-      if(prev) prev.classList.remove('bg-yellow-700');
-    }
-    i++;
-  }, speed);
-}
-
-hintBtn.addEventListener('click', async ()=>{
-  if(!solution || solution.length===0){
-    const path = await requestSolve();
-    animateHint(path);
+  const hintBtn = document.getElementById('hintBtn');
+  if (hintBtn) {
+    hintBtn.addEventListener('click', async ()=>{
+      if(!solution || solution.length===0){
+        const path = await requestSolve();
+        animateHint(path);
+      } else {
+        animateHint(solution);
+      }
+    });
   } else {
-    animateHint(solution);
+    console.warn('Hint button (#hintBtn) not found in DOM.');
   }
-});
-
-  resetBtn.addEventListener('click', ()=>{ solution=[]; renderMaze(); stopCountdown(); timerEl.textContent=formatTime(timeLimit); setStatus('Ready'); hideGameOver(); hideWinModal(); });
 
   restartBtn.addEventListener('click', async()=>{ hideGameOver(); stopCountdown(); await fetchMaze(); });
   closeModalBtn.addEventListener('click', ()=>{ hideGameOver(); setStatus('Ready'); });
