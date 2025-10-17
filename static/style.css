@@ -1,0 +1,17 @@
+#mazeContainer div {
+  transition: background-color 0.18s ease, transform 0.12s ease;
+  user-select: none;
+}
+
+#mazeContainer div:hover {
+  transform: translateY(-2px);
+}
+
+.maze-cell {
+  width: 36px;
+  height: 36px;
+}
+
+@media (max-width: 640px) {
+  .maze-cell { width: 28px; height: 28px; }
+}
